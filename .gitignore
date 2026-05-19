@@ -1,0 +1,34 @@
+!models/*/*.dvc
+!data/test/*.dvc
+!data/test_10bit/*.dvc
+!data/calibration_set/*.dvc
+# Cached Files
+__pycache__/
+*.py[cod]
+*.pth
+
+# Data & Results
+data/
+runs/
+eval/
+result*/
+RESULT*/
+base*/
+high*/
+.dvc/
+
+# IDEs
+.vscode
+.idea
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+src/codec/entropy_coding/lib_wrappers/mans/cache*pt
+src/codec/entropy_coding/lib_wrappers/mans/*.so
+src/codec/entropy_coding/lib_wrappers/direct/*.so

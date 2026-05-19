@@ -1,0 +1,6 @@
+{
+    "version": "DIS",
+    "codec_name": "JAI",
+    "config": ["tools_on.json", "profiles/high.json"],
+    "pipeline": "pipeline.json"
+}

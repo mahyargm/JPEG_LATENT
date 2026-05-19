@@ -1,0 +1,4 @@
+outs:
+- md5: 9df9c5843bad5c0a12858f23bb7edcf8
+  size: 68993567
+  path: best.pth

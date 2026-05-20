@@ -316,6 +316,93 @@ class CcsGvaeSGMM(CoreModelBase):
 
         
     
+    def decompress_from_latent(self, y_hat_concat: torch.Tensor) -> Image:
+        """Decode image directly from a pre-computed latent tensor, bypassing entropy decoding.
+
+        Args:
+            y_hat_concat (torch.Tensor): concatenated y_hat from model_y and model_uv,
+                shape [1, N_luma + N_chroma, H_lat, W_lat], as saved by the encoder.
+        Returns:
+            rec (Image): reconstructed image.
+        """
+        n_luma = self.model_y.chs_ls
+        y_hat_y = y_hat_concat[:, :n_luma, :, :]
+        y_hat_uv = y_hat_concat[:, n_luma:, :, :]
+
+        decisions = Decisions()
+        decisions['model_y'] = Decisions()
+        decisions['model_uv'] = Decisions()
+        decisions['model_y']['y_hat'] = y_hat_y
+        decisions['model_uv']['y_hat'] = y_hat_uv
+
+        rec_Y, rec_UV = self._synthesis_from_y_hat(decisions)
+
+        rec_U = rec_UV[:, 0:1]
+        rec_V = rec_UV[:, 1:2]
+        c_ver = self.get_owner_param('c_ver')
+        c_hor = self.get_owner_param('c_hor')
+        s_ver = self.get_owner_param('s_ver')
+        s_hor = self.get_owner_param('s_hor')
+
+        img_fmt = Image.get_format_from_subsampling(c_ver, c_hor)
+        ans = Image.create_from_tensors(rec_Y,
+                                        rec_U,
+                                        rec_V,
+                                        self.get_internal_data_range(),
+                                        format=img_fmt,
+                                        color_space='yuv',
+                                        bit_depth=self.get_owner_param('image_data_bits'))
+        out_img_fmt = Image.get_format_from_subsampling(s_ver, s_hor)
+        ans.to_format_(out_img_fmt)
+        return ans
+
+    def _synthesis_from_y_hat(self, decisions: Decisions):
+        """Run only the synthesis (decoder) transforms given pre-computed y_hat tensors."""
+        h, w = self.get_processed_img_shape()
+        c_ver = self.get_owner_param('c_ver')
+        c_hor = self.get_owner_param('c_hor')
+        diff_display_img_width = self.get_owner_param('diff_display_img_width')
+        diff_display_img_height = self.get_owner_param('diff_display_img_height')
+
+        self.setup_dec_tile_managers_of_model(self.model_y)
+        self.setup_dec_tile_managers_of_model(self.model_uv)
+
+        rec_Y = torch.zeros((1, 1, h, w), device=self.device, dtype=torch.float)
+        rec_UV = torch.zeros((1, 2, h, w), device=self.device, dtype=torch.float)
+
+        decisions['model_y']['tiles_synthesis'] = Decisions()
+        decisions['model_uv']['tiles_synthesis'] = Decisions()
+
+        # ls postprocessing
+        with self.model_y.get_profilers_ctx(f'{self.model_y.name} ls_postprocessing'):
+            self.model_y.ls_processing.post_processing(decisions['model_y'])
+        with self.model_uv.get_profilers_ctx(f'{self.model_uv.name} ls_postprocessing'):
+            self.model_uv.ls_processing.post_processing(decisions['model_uv'])
+
+        # extract y_hat tiles for synthesis
+        self.model_y.common_modules.extract_y_hat_for_synthesis_tiles(decisions['model_y'], decisions['model_y']['y_hat'])
+        self.model_uv.common_modules.extract_y_hat_for_synthesis_tiles(decisions['model_uv'], decisions['model_uv']['y_hat'])
+
+        for tile_idx, tile_info in enumerate(tiling.ColocatedTiles.iter_colocated_grids(self.model_y.tile_manager_synthesis)):
+            self.model_y.common_modules.decompress_y_hat_to_image_tile(
+                decisions['model_y'],
+                tile_info,
+                rec_Y)
+
+        for tile_idx, tile_info in enumerate(tiling.ColocatedTiles.iter_colocated_grids(self.model_uv.tile_manager_synthesis)):
+            supp_info_uv = decisions['model_y']['tiles_synthesis'][tile_info.img]['y_hat']
+            self.model_uv.common_modules.decompress_y_hat_to_image_tile(
+                decisions['model_uv'],
+                tile_info,
+                rec_UV,
+                supp_info_uv)
+
+        output_width = w - diff_display_img_width
+        output_height = h - diff_display_img_height
+        rec_Y = rec_Y[:, :, :output_height, :output_width]
+        rec_UV = rec_UV[:, :, :output_height:c_ver, :output_width:c_hor]
+        return rec_Y, rec_UV
+
     def forward(self, decisions: Decisions, return_latent=None, *args, **kwargs):
         h, w = self.get_processed_img_shape()
         c_ver = self.get_owner_param('c_ver')

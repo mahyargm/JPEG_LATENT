@@ -156,6 +156,35 @@ class CodingEngine(ToolEngine):
             self.get_profilers().finish('image decompression')
             return rec_img
 
+    def decompress_from_latent(self, y_hat_concat, img_height: int, img_width: int,
+                               image_data_bits: int = 8,
+                               s_ver: int = 1, s_hor: int = 1) -> Image:
+        """Reconstruct an image directly from a saved latent tensor without a bitstream.
+
+        Args:
+            y_hat_concat: concatenated y_hat tensor [1, N_luma+N_chroma, H_lat, W_lat].
+            img_height: original image height in pixels.
+            img_width: original image width in pixels.
+            image_data_bits: bit-depth of the output image (default 8).
+            s_ver: vertical chroma subsampling of the source (default 1 = 4:4:4).
+            s_hor: horizontal chroma subsampling of the source (default 1 = 4:4:4).
+        Returns:
+            rec_img (Image): reconstructed image.
+        """
+        with torch.no_grad():
+            self.img_height = img_height
+            self.img_width = img_width
+            self.image_data_bits = image_data_bits
+            self.s_ver = s_ver
+            self.s_hor = s_hor
+            self.init_new_img_recursivly()
+            self.res_changer.setup([img_height, img_width])
+            rec_img = self.model.CCS_SGMM.get_active_tool().decompress_from_latent(y_hat_concat)
+            rec_img = self.res_changer.backward_transform(rec_img)
+            rec_img.to_format_(Image.get_format_from_subsampling(self.s_ver, self.s_hor))
+            rec_img = self.colour_processing.post_processing(rec_img)
+            return rec_img
+
     def encode(self, ec: ECModule, decisions: Decisions) -> None:
         self.logger.debug('Storing data to a bitstream')
         # Store decisions to bitstream

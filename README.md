@@ -1,12 +1,38 @@
 This code is based on the official JPEG AI software and additionally saves the latent image representations after entropy decoding.
 
+# Encode/Decode pipeline:
+
 By running wrapper.py, you can launch multiple parallel instances of JPEG AI to process an entire directory of images efficiently. The script automatically splits the dataset into chunks and processes them in parallel across multiple workers.
 
 Optionally, the outputs generated for each chunk can be merged back into a single directory using merge_chunks.py.
 
 **Note:** To turn off the bitrate matcher change ""!include": ["AE/default.json", "BRM/regen_list.json"]," to ""!include": ["AE/default.json", "BRM/default.json"]," in "cfg/pipeline.json".
 
+# Decode from latent representation:
 
+`decode_from_latents.py` reconstructs images directly from saved `.pt` latent files, bypassing entropy decoding entirely. Latents are produced by `wrapper.py` when `--store_latent 1` is set (they are saved under `<out_dir>/latent/`).
+
+**Arguments:**
+
+| Argument | Default | Description |
+|---|---|---|
+| `--latent_dir` | *(required)* | Directory containing `.pt` latent files |
+| `--out_dir` | *(required)* | Directory to write reconstructed PNG images |
+| `--device` | `gpu` | `gpu` or `cpu` |
+| `--models_dir_name` | `models` | Name of the models directory |
+| `--model_id` | auto | Force a specific model index (0-based).
+| `--img_height` | auto | Override image height in pixels. By default inferred from the latent spatial size × alignment size. |
+| `--img_width` | auto | Override image width in pixels. Same as above. |
+| `--output_bit_depth` | `8` | Output image bit depth (`8` or `10`). |
+
+**Example — decode a single latent directory with a fixed model:**
+```bash
+python decode_from_latents.py \
+    --latent_dir /workspace/results_chunks/0/latent \
+    --out_dir    /workspace/decoded \
+    --model_id   0 \
+    --device     gpu
+```
 
 # JPEG-AI Reference software
 
